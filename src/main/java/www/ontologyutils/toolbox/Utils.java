@@ -280,4 +280,75 @@ public final class Utils {
     public static <T> Set<T> toSet(Stream<? extends T> stream) {
         return stream.collect(Collectors.toSet());
     }
+
+    /**
+     * Formats a table of axiom scores for display, sorting by score.
+     *
+     * @param title
+     *            The title to display above the table.
+     * @param entries
+     *            A stream of axiom-score pairs to display.
+     * @param ascending
+     *            If true, sort scores in ascending order; otherwise descending.
+     * @return A formatted string representation of the table.
+     */
+    public static String formatShapleyTable(String title, Stream<Map.Entry<OWLAxiom, Double>> entries,
+            boolean ascending) {
+        var sb = new StringBuilder();
+        sb.append("\n").append(title).append("\n");
+        sb.append(String.format("%-12s | %s%n", "Shapley", "Axiom"));
+        sb.append(String.format("%s%n", "--------------|----------------------------------------------"));
+
+        entries.sorted((e1, e2) -> {
+            var cmp = Double.compare(e1.getValue(), e2.getValue());
+            if (!ascending) {
+                cmp = -cmp;
+            }
+            if (cmp != 0) {
+                return cmp;
+            }
+            var axiomCmp = prettyPrintAxiom(e1.getKey()).compareTo(prettyPrintAxiom(e2.getKey()));
+            return ascending ? axiomCmp : -axiomCmp;
+        }).forEach(e -> sb.append(String.format("%-12.6f | %s%n", e.getValue(), prettyPrintAxiom(e.getKey()))));
+        return sb.toString();
+    }
+
+    /**
+     * Formats the current state of an ontology for display.
+     *
+     * @param title
+     *            The title to display above the state.
+     * @param ontology
+     *            The ontology to format.
+     * @return A formatted string representation of the ontology state.
+     */
+    public static String formatOntologyState(String title, Ontology ontology) {
+        var sb = new StringBuilder();
+        sb.append("\n").append(title).append("\n");
+        sb.append(formatAxiomSet("Refutable axioms:", ontology.refutableAxioms().collect(Collectors.toSet())));
+        return sb.toString();
+    }
+
+    /**
+     * Formats a set of axioms for display.
+     *
+     * @param title
+     *            The title to display above the axiom set.
+     * @param axioms
+     *            The set of axioms to format.
+     * @return A formatted string representation of the axiom set.
+     */
+    public static String formatAxiomSet(String title, Set<OWLAxiom> axioms) {
+        var sb = new StringBuilder();
+        var printableAxioms = axioms.stream()
+                .map(Utils::prettyPrintAxiom)
+                .filter(rendered -> !rendered.isBlank())
+                .sorted()
+                .toList();
+
+        sb.append(title).append("\n");
+        sb.append("Total axioms: ").append(printableAxioms.size()).append("\n");
+        printableAxioms.forEach(axiom -> sb.append("  ").append(axiom).append("\n"));
+        return sb.toString();
+    }
 }
