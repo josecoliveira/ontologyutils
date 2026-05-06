@@ -5,7 +5,7 @@
 The prototype is implemented in Java, and will require at least Java version 17. The Maven tool has been used for dependency management. Both Maven and a Java 17 JDK must be installed for building this project. To download and build the project, the following code can be executed. After building, the packaged JAR files will be located in `target/`. There will be two different packages, one containing only the code in the project named `ontologyutils-X.X.X.jar`, and one containing also all required dependencies named `shaded-ontologyutils-X.X.X.jar`. If you want to skip running the tests, you can use `mvn package -DskipTests`.
 
 ```bash
-git clone https://github.com/rolandbernard/ontologyutils
+git clone https://github.com/josecoliveira/ontologyutils
 cp ontologyutils
 mvn clean compile package
 ```
