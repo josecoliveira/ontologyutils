@@ -3,13 +3,12 @@ package www.ontologyutils.repair;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.semanticweb.owlapi.model.OWLAxiom;
 
 import www.ontologyutils.refinement.AxiomWeakener;
-import www.ontologyutils.repair.OntologyRepairRemoval.BadAxiomStrategy;
-import www.ontologyutils.repair.OntologyRepairWeakening.RefOntologyStrategy;
-import www.ontologyutils.repair.powerindex.PowerIndex;
+import www.ontologyutils.repair.powerindex.*;
 import www.ontologyutils.toolbox.Ontology;
 import www.ontologyutils.toolbox.Utils;
 
@@ -29,7 +28,75 @@ import www.ontologyutils.toolbox.Utils;
  * 7. Return the repaired ontology.
  */
 public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
-    private final PowerIndex powerIndex;
+    /**
+     * Possible strategies for computing the reference ontology.
+     */
+    public static enum RefOntologyStrategy {
+        /**
+         * Compute all maximal consistent subsets and select one at random.
+         */
+        RANDOM_MCS,
+        /**
+         * Compute some (but not necessarily all) maximal consistent subsets and select
+         * one at random.
+         */
+        SOME_MCS,
+        /**
+         * Compute one maximal consistent subsets and select it.
+         */
+        ONE_MCS,
+        /**
+         * Compute the largest maximal consistent subsets and select one at random.
+         */
+        LARGEST_MCS,
+        /**
+         * Compute all maximal consistent subsets and select the intersection of them.
+         */
+        INTERSECTION_OF_MCS,
+        /**
+         * Compute some (but not necessarily all) maximal consistent subsets and select
+         * the intersection of them.
+         */
+        INTERSECTION_OF_SOME_MCS,
+    }
+
+    /**
+     * Possible strategies for computing bad axioms.
+     */
+    public static enum BadAxiomStrategy {
+        /**
+         * Select the weaker axiom with the lowest Shapley inconsistency value (exact
+         * computation).
+         */
+        SHAPLEY_EXACT,
+        /**
+         * Select the weaker axiom with the lowest Shapley inconsistency value
+         * (approximate computation).
+         */
+        SHAPLEY_APPROXIMATE,
+    }
+
+    /**
+     * Possible strategies for computing the weaker axiom to replace a bad axiom.
+     */
+    public static enum WeakerAxiomStrategy {
+        /**
+         * Select the weaker axiom with the lowest Shapley inconsistency value (exact
+         * computation).
+         */
+        SHAPLEY_EXACT,
+        /**
+         * Select the weaker axiom with the lowest Shapley inconsistency value
+         * (approximate computation).
+         */
+        SHAPLEY_APPROXIMATE,
+    }
+
+    // private final PowerIndex powerIndex;
+
+    private final RefOntologyStrategy refOntologySource;
+    private PowerIndex powerIndexBadAxiom;
+    private PowerIndex powerIndexWeakerAxiom;
 
     /**
      * @param isRepaired
@@ -46,10 +113,76 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
      * @param powerIndex
      *            The power index to use for selecting axioms.
      */
-    public OntologyRepairWithPowerIndexes(Predicate<Ontology> isRepaired, RefOntologyStrategy refOntologySource,
-            BadAxiomStrategy badAxiomSource, int weakeningFlags, boolean enhanceRef, PowerIndex powerIndex) {
-        super(isRepaired, refOntologySource, badAxiomSource, weakeningFlags, enhanceRef);
-        this.powerIndex = powerIndex;
+    public OntologyRepairWithPowerIndexes(
+            Predicate<Ontology> isRepaired,
+            RefOntologyStrategy refOntologySource,
+            BadAxiomStrategy badAxiomSource,
+            WeakerAxiomStrategy weakerAxiomStrategy,
+            int weakeningFlags,
+            boolean enhanceRef
+        ) {
+        super(isRepaired);
+        this.refOntologySource = refOntologySource;
+        selectPowerIndexBadAxiom(badAxiomSource);
+        selectPowerIndexWeakerAxiom(weakerAxiomStrategy);
+        this.weakeningFlags = weakeningFlags;
+        this.enhanceRef = enhanceRef;
+    }
+
+    private void selectPowerIndexBadAxiom(BadAxiomStrategy strategy) {
+        switch (strategy) {
+            case SHAPLEY_EXACT -> this.powerIndexBadAxiom = new ShapleyInconsistencyValueExact();
+            case SHAPLEY_APPROXIMATE -> this.powerIndexBadAxiom = new ShapleyInconsistencyValueApproximate();
+            default -> throw new IllegalArgumentException("Unsupported bad axiom strategy: " + strategy);
+        }
+    }
+
+    private void selectPowerIndexWeakerAxiom(WeakerAxiomStrategy strategy) {
+        switch (strategy) {
+            case SHAPLEY_EXACT -> this.powerIndexWeakerAxiom = new ShapleyInconsistencyValueExact();
+            case SHAPLEY_APPROXIMATE -> this.powerIndexWeakerAxiom = new ShapleyInconsistencyValueApproximate();
+            default -> throw new IllegalArgumentException("Unsupported weaker axiom strategy: " + strategy);
+        }
+    }
+
+    /**
+     * @param ontology
+     *            The ontology to find a reference ontology for.
+     * @return The set of axioms to include in the reference ontology to use for
+     *         repairs.
+     */
+    public Stream<Set<OWLAxiom>> getRefAxioms(Ontology ontology) {
+        switch (refOntologySource) {
+            case INTERSECTION_OF_MCS: {
+                return Stream.of(mcsPeekInfo(false, ontology.maximalConsistentSubsets(isRepaired)).reduce((a, b) -> {
+                    a.removeIf(axiom -> !b.contains(axiom));
+                    return a;
+                }).get());
+            }
+            case INTERSECTION_OF_SOME_MCS: {
+                return Stream
+                        .of(mcsPeekInfo(false, ontology.someMaximalConsistentSubsets(isRepaired)).reduce((a, b) -> {
+                            a.removeIf(axiom -> !b.contains(axiom));
+                            return a;
+                        }).get());
+            }
+            case LARGEST_MCS:
+                return mcsPeekInfo(false, ontology.largestMaximalConsistentSubsets(isRepaired));
+            case RANDOM_MCS:
+                return mcsPeekInfo(false, ontology.maximalConsistentSubsets(isRepaired));
+            case SOME_MCS:
+                return mcsPeekInfo(false, ontology.someMaximalConsistentSubsets(isRepaired));
+            case ONE_MCS: {
+                var mcs = ontology.maximalConsistentSubset(isRepaired);
+                if (mcs == null) {
+                    return Stream.of();
+                } else {
+                    return Stream.of(mcs);
+                }
+            }
+            default:
+                throw new IllegalArgumentException("Unimplemented reference ontology choice strategy.");
+        }
     }
 
     @Override
@@ -70,7 +203,7 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
                 var badAxiomCandidates = findBadAxiomCandidates(ontology);
                 var badAxiomScores = computeBadAxiomScores(badAxiomCandidates, currentAxioms);
                 infoMessage("Found " + badAxiomScores.size() + " possible bad axioms.");
-                infoMessage(Utils.formatShapleyTable("Power index values for possible bad axioms:",
+                infoMessage(Utils.formatPowerIndexTable("Power index values for possible bad axioms:",
                         badAxiomScores.entrySet().stream(), false));
                 var badAxiom = selectBadAxiom(badAxiomScores);
                 var weakerAxioms = collectWeakeningCandidates(badAxiom, axiomWeakener);
@@ -82,16 +215,16 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
                     badAxiom = selectBadAxiom(badAxiomScores);
                     weakerAxioms = collectWeakeningCandidates(badAxiom, axiomWeakener);
                 }
-                infoMessage("Selected the bad axiom " + Utils.prettyPrintAxiom(badAxiom) + ".");
+                infoMessage("Selected the bad axiom " + Utils.prettyPrintAxiomDL(badAxiom) + ".");
 
                 var weakerAxiomScores = scoreWeakeningCandidates(weakerAxioms, currentAxioms);
                 infoMessage("Found " + weakerAxioms.size() + " weaker axioms.");
-                infoMessage(Utils.formatShapleyTable(
-                        "Candidate weakenings and power index values for " + Utils.prettyPrintAxiom(badAxiom)
+                infoMessage(Utils.formatPowerIndexTable(
+                        "Candidate weakenings and power index values for " + Utils.prettyPrintAxiomDL(badAxiom)
                                 + ":",
                         weakerAxiomScores.entrySet().stream(), true));
                 var weakerAxiom = selectWeakening(weakerAxiomScores, badAxiom);
-                infoMessage("Selected the weaker axiom " + Utils.prettyPrintAxiom(weakerAxiom) + ".");
+                infoMessage("Selected the weaker axiom " + Utils.prettyPrintAxiomDL(weakerAxiom) + ".");
 
                 ontology.replaceAxiom(badAxiom, weakerAxiom);
                 infoMessage(Utils.formatOntologyState("Ontology state after weakening:", ontology));
@@ -124,27 +257,27 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
             throw new IllegalStateException("No weakening found for axiom.");
         }
         return weakenings.stream()
-                .collect(Collectors.toMap(ax -> ax, ax -> powerIndex.computeScore(currentAxioms, ax)));
+                .collect(Collectors.toMap(ax -> ax, ax -> powerIndexWeakerAxiom.computeScore(currentAxioms, ax)));
     }
 
     private OWLAxiom selectWeakening(Map<OWLAxiom, Double> weakerAxiomScores, OWLAxiom badAxiom) {
         return weakerAxiomScores.entrySet().stream()
                 .min(Comparator.<Map.Entry<OWLAxiom, Double>>comparingDouble(Map.Entry::getValue)
-                        .thenComparing(e -> Utils.prettyPrintAxiom(e.getKey())))
+                        .thenComparing(e -> Utils.prettyPrintAxiomDL(e.getKey())))
                 .orElseThrow(() -> new IllegalStateException("Could not select a weakening for axiom: " + badAxiom))
                 .getKey();
     }
 
     private Map<OWLAxiom, Double> computeBadAxiomScores(List<OWLAxiom> candidates, Set<OWLAxiom> axioms) {
         return candidates.stream()
-                .collect(Collectors.toMap(ax -> ax, ax -> powerIndex.computeScore(axioms, ax)));
+                .collect(Collectors.toMap(ax -> ax, ax -> powerIndexBadAxiom.computeScore(axioms, ax)));
     }
 
     private OWLAxiom selectBadAxiom(Map<OWLAxiom, Double> badAxiomScores) {
         return badAxiomScores.entrySet().stream()
                 .max(Comparator.<Map.Entry<OWLAxiom, Double>>comparingDouble(Map.Entry::getValue)
-                        .thenComparing((e1, e2) -> Utils.prettyPrintAxiom(e2.getKey())
-                                .compareTo(Utils.prettyPrintAxiom(e1.getKey()))))
+                        .thenComparing((e1, e2) -> Utils.prettyPrintAxiomDL(e2.getKey())
+                                .compareTo(Utils.prettyPrintAxiomDL(e1.getKey()))))
                 .orElseThrow(() -> new IllegalStateException("Could not find a bad axiom in ontology."))
                 .getKey();
     }

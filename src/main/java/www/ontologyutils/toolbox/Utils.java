@@ -234,6 +234,16 @@ public final class Utils {
                 .replaceFirst("Annotation(.*?) ", "");
     }
 
+    public static String prettyPrintAxiomDL(OWLAxiom ax) {
+        var rendered = AlcPrinter.print(ax.getAxiomWithoutAnnotations());
+        if (rendered == null || rendered.isBlank()) {
+            return ax.getAxiomWithoutAnnotations().toString()
+                    .replaceAll("<http.*?#", "").replaceAll(">", "").replaceAll("<", "")
+                    .replaceFirst("Annotation(.*?) ", "");
+        }
+        return rendered;
+    }
+
     /**
      * @param axioms
      *            The set of axioms we want to test consistency for.
@@ -292,8 +302,8 @@ public final class Utils {
      *            If true, sort scores in ascending order; otherwise descending.
      * @return A formatted string representation of the table.
      */
-    public static String formatShapleyTable(String title, Stream<Map.Entry<OWLAxiom, Double>> entries,
-            boolean ascending) {
+    public static String formatPowerIndexTable(String title, Stream<Map.Entry<OWLAxiom, Double>> entries,
+                                               boolean ascending) {
         var sb = new StringBuilder();
         sb.append("\n").append(title).append("\n");
         sb.append(String.format("%-12s | %s%n", "Shapley", "Axiom"));
@@ -307,9 +317,9 @@ public final class Utils {
             if (cmp != 0) {
                 return cmp;
             }
-            var axiomCmp = prettyPrintAxiom(e1.getKey()).compareTo(prettyPrintAxiom(e2.getKey()));
+            var axiomCmp = prettyPrintAxiomDL(e1.getKey()).compareTo(prettyPrintAxiomDL(e2.getKey()));
             return ascending ? axiomCmp : -axiomCmp;
-        }).forEach(e -> sb.append(String.format("%-12.6f | %s%n", e.getValue(), prettyPrintAxiom(e.getKey()))));
+        }).forEach(e -> sb.append(String.format("%-12.6f | %s%n", e.getValue(), prettyPrintAxiomDL(e.getKey()))));
         return sb.toString();
     }
 
@@ -341,7 +351,7 @@ public final class Utils {
     public static String formatAxiomSet(String title, Set<OWLAxiom> axioms) {
         var sb = new StringBuilder();
         var printableAxioms = axioms.stream()
-                .map(Utils::prettyPrintAxiom)
+                .map(Utils::prettyPrintAxiomDL)
                 .filter(rendered -> !rendered.isBlank())
                 .sorted()
                 .toList();

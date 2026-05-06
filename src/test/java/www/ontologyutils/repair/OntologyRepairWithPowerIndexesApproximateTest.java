@@ -3,7 +3,6 @@ package www.ontologyutils.repair;
 import org.junit.jupiter.api.parallel.*;
 
 import www.ontologyutils.refinement.AxiomWeakener;
-import www.ontologyutils.repair.powerindex.ShapleyInconsistencyValueApproximate;
 import www.ontologyutils.toolbox.Ontology;
 
 @Execution(ExecutionMode.CONCURRENT)
@@ -12,22 +11,22 @@ public class OntologyRepairWithPowerIndexesApproximateTest extends OntologyRepai
     protected OntologyRepair getRepairForConsistency() {
         return new OntologyRepairWithPowerIndexes(
                 Ontology::isConsistent,
-                OntologyRepairWeakening.RefOntologyStrategy.ONE_MCS,
-                OntologyRepairRemoval.BadAxiomStrategy.IN_SOME_MUS,
+                OntologyRepairWithPowerIndexes.RefOntologyStrategy.ONE_MCS,
+                OntologyRepairWithPowerIndexes.BadAxiomStrategy.SHAPLEY_APPROXIMATE,
+                OntologyRepairWithPowerIndexes.WeakerAxiomStrategy.SHAPLEY_APPROXIMATE,
                 AxiomWeakener.FLAG_DEFAULT,
-                false,
-                new ShapleyInconsistencyValueApproximate());
+                false);
     }
 
     @Override
     protected OntologyRepair getRepairForCoherence() {
         return new OntologyRepairWithPowerIndexes(
                 Ontology::isCoherent,
-                OntologyRepairWeakening.RefOntologyStrategy.ONE_MCS,
-                OntologyRepairRemoval.BadAxiomStrategy.IN_SOME_MUS,
+                OntologyRepairWithPowerIndexes.RefOntologyStrategy.ONE_MCS,
+                OntologyRepairWithPowerIndexes.BadAxiomStrategy.SHAPLEY_APPROXIMATE,
+                OntologyRepairWithPowerIndexes.WeakerAxiomStrategy.SHAPLEY_APPROXIMATE,
                 AxiomWeakener.FLAG_DEFAULT,
-                false,
-                new ShapleyInconsistencyValueApproximate());
+                false);
     }
 }
 
