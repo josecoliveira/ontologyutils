@@ -12,10 +12,10 @@ mvn clean compile package
 
 ## How to Run
 
-This will run the `RepairWithPowerIndexes` application with the exact Shapley value strategy for selecting the bad axiom and the weaker axiom, on the `leftpolicies-ok.owl` test file.
+This will run the `RepairWithPowerIndexes` application with the exact Shapley value strategy for selecting the bad axiom and the weaker axiom on the `leftpolicies-ok.owl` test file:
 
 ```bash
-java -jar target/shaded-ontologyutils-X.X.X.jar src/test/resources/inconsistent/leftpolicies-ok.owl --preset troquard2018-shapley-exact --verbose --normalize --normalize-nnf
+java -jar target/shaded-ontologyutils-X.X.X.jar src/test/resources/inconsistent/leftpolicies-ok.owl --preset troquard2018-shapley-exact --verbose --normalize
 ```
 
 ## Original README

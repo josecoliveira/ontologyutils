@@ -95,7 +95,7 @@ public class RepairWithPowerIndexes extends RepairApp {
                             badAxiomStrategy = BadAxiomStrategy.SHAPLEY_EXACT;
                             weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_EXACT;
                             weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT
+                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
                                     | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
                                     | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
                         }
@@ -104,7 +104,7 @@ public class RepairWithPowerIndexes extends RepairApp {
                             badAxiomStrategy = BadAxiomStrategy.SHAPLEY_APPROXIMATE;
                             weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_APPROXIMATE;
                             weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT
+                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
                                     | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
                                     | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
                         }
@@ -113,7 +113,7 @@ public class RepairWithPowerIndexes extends RepairApp {
                             badAxiomStrategy = BadAxiomStrategy.SHAPLEY_EXACT;
                             weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_EXACT;
                             weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT
+                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
                                     | AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
                         }
                         case "confalonieri2020-shapley-approximate" -> {
@@ -121,7 +121,7 @@ public class RepairWithPowerIndexes extends RepairApp {
                             badAxiomStrategy = BadAxiomStrategy.SHAPLEY_APPROXIMATE;
                             weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_APPROXIMATE;
                             weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT
+                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
                                     | AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
                         }
                         case "bernard2023-shapley-exact" -> {
