@@ -1,0 +1,49 @@
+Prefix: owl: <http://www.w3.org/2002/07/owl#>
+Prefix: rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+Prefix: rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+Prefix: xml: <http://www.w3.org/XML/1998/namespace>
+Prefix: xsd: <http://www.w3.org/2001/XMLSchema#>
+Prefix: : <http://www.semanticweb.org/leftpolicies>
+
+
+
+Ontology: <http://www.semanticweb.org/leftpolicies>
+
+
+Class: <http://www.semanticweb.org/leftpolicies#LeftPolicy>
+
+    
+Class: <http://www.semanticweb.org/leftpolicies#RaiseWages>
+
+    SubClassOf: 
+        <http://www.semanticweb.org/leftpolicies#LeftPolicy>
+    
+    DisjointWith: 
+        <http://www.semanticweb.org/leftpolicies#RaiseWelfare>
+    
+    
+Class: <http://www.semanticweb.org/leftpolicies#RaiseWelfare>
+
+    SubClassOf: 
+        <http://www.semanticweb.org/leftpolicies#LeftPolicy>
+    
+    DisjointWith: 
+        <http://www.semanticweb.org/leftpolicies#RaiseWages>
+    
+    
+Individual: <http://www.semanticweb.org/leftpolicies#Sweden>
+
+    Types: 
+        <http://www.semanticweb.org/leftpolicies#LeftPolicy>,
+        <http://www.semanticweb.org/leftpolicies#RaiseWages>,
+        <http://www.semanticweb.org/leftpolicies#RaiseWelfare>
+    
+    
+Individual: <http://www.semanticweb.org/leftpolicies#Switzerland>
+
+    Types: 
+        <http://www.semanticweb.org/leftpolicies#LeftPolicy>,
+        <http://www.semanticweb.org/leftpolicies#RaiseWages>,
+        <http://www.semanticweb.org/leftpolicies#RaiseWelfare>
+    
+    

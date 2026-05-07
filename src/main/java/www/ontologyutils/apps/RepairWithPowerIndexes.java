@@ -98,9 +98,6 @@ public class RepairWithPowerIndexes extends RepairApp {
                                     | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT
                                     | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
                                     | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-//                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-//                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
-//                                    | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
                         }
                         case "troquard2018-shapley-approximate" -> {
                             refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
