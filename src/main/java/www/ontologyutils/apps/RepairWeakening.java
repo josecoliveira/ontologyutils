@@ -88,14 +88,14 @@ public class RepairWeakening extends RepairApp {
                         refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
                         badAxiomStrategy = BadAxiomStrategy.IN_SOME_MUS;
                         weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT
+                                | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
                                 | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
                                 | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
                     } else if (preset == 2020) {
                         refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
                         badAxiomStrategy = BadAxiomStrategy.IN_SOME_MUS;
                         weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_NNF_STRICT
+                                | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
                                 | AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
                     } else if (preset == 2023) {
                         refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
