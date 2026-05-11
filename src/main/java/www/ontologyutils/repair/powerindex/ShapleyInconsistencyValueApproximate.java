@@ -13,7 +13,7 @@ import www.ontologyutils.toolbox.Utils;
  * instead of enumerating all subsets.
  */
 public class ShapleyInconsistencyValueApproximate implements PowerIndex {
-    private static final int DEFAULT_APPROXIMATION_SAMPLES = 4096;
+    private static final int DEFAULT_APPROXIMATION_SAMPLES = 735;
     private static final long DEFAULT_APPROXIMATION_SEED = 13L;
 
     private final Map<Set<OWLAxiom>, Integer> drasticCache;
