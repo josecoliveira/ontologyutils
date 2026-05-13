@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Supplier;
 
 import org.semanticweb.HermiT.ReasonerFactory;
 import org.semanticweb.owlapi.model.*;
@@ -27,20 +28,19 @@ import www.ontologyutils.toolbox.*;
  * inferred information content of the resulting repairs.
  */
 public class RepairComparisonExperiment extends App {
-    private static final int TRIALS = 100;
+    private static final int TRIALS = 10;
     private static final long BASE_SEED = 13L;
     private static final long WEAKENING_TIMEOUT_SECONDS = 300L;
-    private static final long POWER_INDEX_TIMEOUT_SECONDS = 600L;
+    private static final long POWER_INDEX_TIMEOUT_SECONDS = 900L;
 
-    private List<String> inputFiles = new ArrayList<>();
+    private final List<String> inputFiles = new ArrayList<>();
     private OWLReasonerFactory reasonerFactory = new FaCTPlusPlusReasonerFactory();
 
     @Override
     protected List<Option<?>> appOptions() {
-        var options = new ArrayList<Option<?>>(super.appOptions());
-        options.add(OptionType.FILE.createDefault(file -> {
-            inputFiles.add(file.toString());
-        }, "the files containing the original ontologies"));
+        var options = new ArrayList<>(super.appOptions());
+        options.add(OptionType.FILE.createDefault(file -> inputFiles.add(file.toString()),
+                "the files containing the original ontologies"));
         options.add(OptionType.options(
                 Map.of("hermit", new ReasonerFactory(),
                         "jfact", new JFactFactory(),
@@ -124,15 +124,19 @@ public class RepairComparisonExperiment extends App {
         return Utils.toSet(ontology.inferredSubClassAxiomsOver(subConcepts));
     }
 
-    private void applyRepairWithTimeout(OntologyRepair repair, Ontology ontology, String repairName,
-            long timeoutSeconds) throws TimeoutException {
+    private void applyRepairWithTimeout(Supplier<? extends OntologyRepair> repairSupplier, Ontology ontology,
+            String repairName, long timeoutSeconds, long seed) throws TimeoutException {
         var executor = Executors.newSingleThreadExecutor(r -> {
             var thread = new Thread(r, "repair-thread-" + repairName);
             thread.setDaemon(true);
             return thread;
         });
         try {
-            var future = executor.submit(() -> repair.apply(ontology));
+            var future = executor.submit(() -> {
+                Utils.randomSeed(seed);
+                repairSupplier.get().apply(ontology);
+                return null;
+            });
             try {
                 future.get(timeoutSeconds, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
@@ -143,6 +147,19 @@ public class RepairComparisonExperiment extends App {
             throw Utils.panic(e);
         } finally {
             executor.shutdownNow();
+            awaitRepairTermination(executor, repairName);
+        }
+    }
+
+    private void awaitRepairTermination(ExecutorService executor, String repairName) {
+        try {
+            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                logMessage("  WARNING: Repair thread for " + repairName
+                        + " did not terminate promptly after cancellation.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw Utils.panic(e);
         }
     }
 
@@ -182,8 +199,6 @@ public class RepairComparisonExperiment extends App {
 
             try (var ontology = Ontology.loadOntology(input, reasonerFactory)) {
                 logMessage("Loaded...");
-                var weakeningRepair = createWeakeningRepair();
-                var powerIndexRepair = createPowerIndexRepair();
 
                 int successfulTrials = 0;
                 int attemptedTrials = 0;
@@ -201,16 +216,15 @@ public class RepairComparisonExperiment extends App {
                         try (var repairedOntologyWithWeakening = inconsistent.cloneWithSeparateCache()) {
                             try {
                                 logMessage("  Repairing with weakening (troquard2018)...");
-                                Utils.randomSeed(trialSeed + 1);
-                                applyRepairWithTimeout(weakeningRepair, repairedOntologyWithWeakening, "weakening",
-                                        WEAKENING_TIMEOUT_SECONDS);
+                                applyRepairWithTimeout(this::createWeakeningRepair, repairedOntologyWithWeakening,
+                                        "weakening", WEAKENING_TIMEOUT_SECONDS, trialSeed + 1);
 
                                 try (var repairedOntologyWithPowerIndex = inconsistent.cloneWithSeparateCache()) {
                                     try {
                                         logMessage("  Repairing with power indexes (troquard2018-shapley-approximate)...");
-                                        Utils.randomSeed(trialSeed + 2);
-                                        applyRepairWithTimeout(powerIndexRepair, repairedOntologyWithPowerIndex,
-                                                "power-index", POWER_INDEX_TIMEOUT_SECONDS);
+                                        applyRepairWithTimeout(this::createPowerIndexRepair,
+                                                repairedOntologyWithPowerIndex, "power-index",
+                                                POWER_INDEX_TIMEOUT_SECONDS, trialSeed + 2);
 
                                         var subConcepts = collectSubConcepts(repairedOntologyWithWeakening,
                                                 repairedOntologyWithPowerIndex);
