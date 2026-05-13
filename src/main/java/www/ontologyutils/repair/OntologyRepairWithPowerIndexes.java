@@ -244,8 +244,8 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
         if (weakenings == null || weakenings.isEmpty()) {
             throw new IllegalStateException("No weakening found for axiom.");
         }
-        return weakenings.stream()
-                .collect(Collectors.toMap(ax -> ax, ax -> powerIndexWeakerAxiom.computeScore(currentAxioms, ax)));
+        // Use adaptive batch scoring: sample in chunks and stop when ranking stabilizes.
+        return powerIndexWeakerAxiom.computeScoresAdaptive(currentAxioms, weakenings, 50, 1000);
     }
 
     private OWLAxiom selectWeakening(Map<OWLAxiom, Double> weakerAxiomScores, OWLAxiom badAxiom) {
@@ -260,8 +260,9 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
         if (currentAxioms == null || currentAxioms.isEmpty()) {
             throw new IllegalStateException("Could not find a bad axiom in ontology.");
         }
-        return currentAxioms.stream()
-                .collect(Collectors.toMap(ax -> ax, ax -> powerIndexBadAxiom.computeScore(currentAxioms, ax)));
+        // Batch compute Shapley scores adaptively and stop when the descending
+        // ranking of bad axioms stabilizes.
+        return powerIndexBadAxiom.computeScoresAdaptive(currentAxioms, currentAxioms, 50, 1000, false);
     }
 
     private OWLAxiom selectBadAxiom(Map<OWLAxiom, Double> badAxiomScores) {

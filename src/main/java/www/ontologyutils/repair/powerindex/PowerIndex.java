@@ -1,5 +1,7 @@
 package www.ontologyutils.repair.powerindex;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import org.semanticweb.owlapi.model.OWLAxiom;
@@ -23,5 +25,45 @@ public interface PowerIndex {
      *         greater influence on inconsistency.
      */
     double computeScore(Set<OWLAxiom> axioms, OWLAxiom targetAxiom);
+
+    /**
+     * Compute scores for multiple target axioms. Default implementation
+     * falls back to calling {@link #computeScore(Set, OWLAxiom)} repeatedly.
+     */
+    default Map<OWLAxiom, Double> computeScores(Set<OWLAxiom> axioms, Set<OWLAxiom> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return Map.of();
+        }
+        Map<OWLAxiom, Double> result = new HashMap<>();
+        for (OWLAxiom t : targets) {
+            result.put(t, computeScore(axioms, t));
+        }
+        return result;
+    }
+
+    /**
+     * Adaptive scoring that can stop early when a ranking stabilizes. Default
+     * implementation delegates to {@link #computeScores(Set, Set)} without
+     * adaptivity.
+     *
+     * @param axioms    base universe (targets will be added to this universe for
+     *                  scoring)
+     * @param targets   targets to rank/score
+     * @param chunkSize number of samples per chunk
+     * @param maxSamples maximum total samples to use
+     */
+    default Map<OWLAxiom, Double> computeScoresAdaptive(Set<OWLAxiom> axioms, Set<OWLAxiom> targets,
+            int chunkSize, int maxSamples) {
+        return computeScores(axioms, targets);
+    }
+
+    /**
+     * Adaptive scoring with explicit ranking direction. Default implementation
+     * delegates to {@link #computeScoresAdaptive(Set, Set, int, int)}.
+     */
+    default Map<OWLAxiom, Double> computeScoresAdaptive(Set<OWLAxiom> axioms, Set<OWLAxiom> targets,
+            int chunkSize, int maxSamples, boolean ascending) {
+        return computeScoresAdaptive(axioms, targets, chunkSize, maxSamples);
+    }
 }
 
