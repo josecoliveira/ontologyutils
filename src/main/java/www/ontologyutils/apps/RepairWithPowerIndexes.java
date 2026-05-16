@@ -14,6 +14,17 @@ import www.ontologyutils.toolbox.Ontology;
  * bad axioms and weaker replacements.
  */
 public class RepairWithPowerIndexes extends RepairApp {
+    private static final Map<String, Integer> PRESET_WEAKENING_FLAGS = Map.of(
+            "troquard2018", AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
+                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
+                    | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
+                    | AxiomWeakener.FLAG_OWL2_SET_OPERANDS,
+            "confalonieri2020", AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
+                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
+                    | AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_OWL2_SET_OPERANDS,
+            "bernard2023", AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
+                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_OWL2_SET_OPERANDS);
+
     private boolean coherence = false;
     private RefOntologyStrategy refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
     private BadAxiomStrategy badAxiomStrategy = BadAxiomStrategy.BANZHAF_APPROXIMATE;
@@ -89,77 +100,17 @@ public class RepairWithPowerIndexes extends RepairApp {
         options.add(OptionType.FLAG.create("enhance-ref", b -> {
             enhanceRef = true;
         }, "keep the reference ontology as static axioms in the output"));
-        options.add(OptionType.options(
-                Map.of("troquard2018-shapley-exact", "troquard2018-shapley-exact",
-                        "troquard2018-shapley-approximate", "troquard2018-shapley-approximate",
-                        "troquard2018-banzhaf-approximate", "troquard2018-banzhaf-approximate",
-                        "confalonieri2020-shapley-exact", "confalonieri2020-shapley-exact",
-                        "confalonieri2020-shapley-approximate", "confalonieri2020-shapley-approximate",
-                        "bernard2023-shapley-exact", "bernard2023-shapley-exact",
-                        "bernard2023-shapley-approximate", "bernard2023-shapley-approximate"))
-                .create("preset", preset -> {
-                    // Note that these are not exactly the configurations used in the papers.
-                    switch (preset) {
-                        case "troquard2018-shapley-exact" -> {
-                            refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
-                            badAxiomStrategy = BadAxiomStrategy.SHAPLEY_EXACT;
-                            weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_EXACT;
-                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
-                                    | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
-                                    | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-                        }
-                        case "troquard2018-shapley-approximate" -> {
-                            refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
-                            badAxiomStrategy = BadAxiomStrategy.SHAPLEY_APPROXIMATE;
-                            weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_APPROXIMATE;
-                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
-                                    | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
-                                    | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-                        }
-                        case "troquard2018-banzhaf-approximate" -> {
-                            refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
-                            badAxiomStrategy = BadAxiomStrategy.BANZHAF_APPROXIMATE;
-                            weakerAxiomStrategy = WeakerAxiomStrategy.BANZHAF_APPROXIMATE;
-                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
-                                    | AxiomWeakener.FLAG_ALC_STRICT | AxiomWeakener.FLAG_NO_ROLE_REFINEMENT
-                                    | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-                        }
-                        case "confalonieri2020-shapley-exact" -> {
-                            refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
-                            badAxiomStrategy = BadAxiomStrategy.SHAPLEY_EXACT;
-                            weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_EXACT;
-                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
-                                    | AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-                        }
-                        case "confalonieri2020-shapley-approximate" -> {
-                            refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
-                            badAxiomStrategy = BadAxiomStrategy.SHAPLEY_APPROXIMATE;
-                            weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_APPROXIMATE;
-                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE
-                                    | AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-                        }
-                        case "bernard2023-shapley-exact" -> {
-                            refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
-                            badAxiomStrategy = BadAxiomStrategy.SHAPLEY_EXACT;
-                            weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_EXACT;
-                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-                        }
-                        case "bernard2023-shapley-approximate" -> {
-                            refOntologyStrategy = RefOntologyStrategy.ONE_MCS;
-                            badAxiomStrategy = BadAxiomStrategy.SHAPLEY_APPROXIMATE;
-                            weakerAxiomStrategy = WeakerAxiomStrategy.SHAPLEY_APPROXIMATE;
-                            weakeningFlags = AxiomWeakener.FLAG_SROIQ_STRICT | AxiomWeakener.FLAG_SIMPLE_ROLES_STRICT
-                                    | AxiomWeakener.FLAG_RIA_ONLY_SIMPLE | AxiomWeakener.FLAG_OWL2_SET_OPERANDS;
-                        }
-                    }
-                }, "configuration approximating description in papers"));
+        options.add(OptionType.options(Map.of(
+                "troquard2018", "troquard2018",
+                "confalonieri2020", "confalonieri2020",
+                "bernard2023", "bernard2023"))
+                .create("preset", this::applyPreset, "configuration approximating description in papers"));
         return options;
+    }
+
+    private void applyPreset(String presetName) {
+        // Presets now only configure weakening-related flags.
+        weakeningFlags = PRESET_WEAKENING_FLAGS.getOrDefault(presetName, weakeningFlags);
     }
 
     @Override
