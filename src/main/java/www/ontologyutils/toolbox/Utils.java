@@ -47,6 +47,17 @@ public final class Utils {
     }
 
     /**
+     * Return a random long from the thread-local RNG.
+     * This is useful for creating per-trial deterministic seeds that follow the
+     * same seed set by {@link #randomSeed(long)}.
+     *
+     * @return a pseudorandom long value
+     */
+    public static long randomLong() {
+        return random.get().nextLong();
+    }
+
+    /**
      * Select a random from a finite stream uniformly at random.
      *
      * @param <T>

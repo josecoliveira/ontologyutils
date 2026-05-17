@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
@@ -28,13 +29,18 @@ import www.ontologyutils.toolbox.*;
  * inferred information content of the resulting repairs.
  */
 public class RepairComparisonExperiment extends App {
-    private static final int TRIALS = 5;
+    private static final int TRIALS = 100;
+    private static final int CONSECUTIVE_FAILURE_CAP = 3;
     private static final long BASE_SEED = 13L;
+    private static final long REMOVAL_TIMEOUT_SECONDS = 300L;
     private static final long WEAKENING_TIMEOUT_SECONDS = 300L;
     private static final long POWER_INDEX_TIMEOUT_SECONDS = 600L;
+    private static final long MAKE_INCONSISTENT_TIMEOUT_SECONDS = 300L;
 
     private final List<String> inputFiles = new ArrayList<>();
     private OWLReasonerFactory reasonerFactory = new FaCTPlusPlusReasonerFactory();
+    private int initialSuccessfulTrials = 0;
+    private int initialAttemptedTrials = 0;
 
     @Override
     protected List<Option<?>> appOptions() {
@@ -47,6 +53,10 @@ public class RepairComparisonExperiment extends App {
                         "openllet", OpenlletReasonerFactory.getInstance(),
                         "fact++", new FaCTPlusPlusReasonerFactory()))
                 .create("reasoner", r -> reasonerFactory = r, "the reasoner to use"));
+        options.add(OptionType.UINT.create("start-successful-trials", n -> initialSuccessfulTrials = n,
+                "successful trials already completed for the current ontology"));
+        options.add(OptionType.UINT.create("start-attempted-trials", n -> initialAttemptedTrials = n,
+                "attempted trials already consumed for the current ontology"));
         return options;
     }
 
@@ -57,6 +67,15 @@ public class RepairComparisonExperiment extends App {
                         | AxiomStrengthener.FLAG_RIA_ONLY_SIMPLE | AxiomStrengthener.FLAG_ALC_STRICT
                         | AxiomStrengthener.FLAG_NO_ROLE_REFINEMENT | AxiomStrengthener.FLAG_OWL2_SET_OPERANDS,
                 false);
+    }
+
+    private OntologyRepairRemoval createRandomRemovalRepair() {
+        return new OntologyRepairRemoval(Ontology::isConsistent, OntologyRepairRemoval.BadAxiomStrategy.RANDOM);
+    }
+
+    private OntologyRepairRemoval createLargestMcsRemovalRepair() {
+        return new OntologyRepairRemoval(Ontology::isConsistent,
+                OntologyRepairRemoval.BadAxiomStrategy.NOT_IN_LARGEST_MCS);
     }
 
     private OntologyRepairWithPowerIndexes createPowerIndexRepair() {
@@ -124,6 +143,18 @@ public class RepairComparisonExperiment extends App {
         return Utils.toSet(ontology.inferredSubClassAxiomsOver(subConcepts));
     }
 
+    private String extractErrorMessage(Throwable e) {
+        if (e.getCause() != null) {
+            String causeMsg = e.getCause().getMessage();
+            String causeClass = e.getCause().getClass().getSimpleName();
+            if (causeMsg != null && causeMsg.contains("Could not weaken")) {
+                return "Repair failed: " + causeMsg;
+            }
+            return "Repair failed: " + causeClass + (causeMsg != null ? ": " + causeMsg : "");
+        }
+        return "Repair failed: " + e.getClass().getSimpleName();
+    }
+
     private void applyRepairWithTimeout(Supplier<? extends OntologyRepair> repairSupplier, Ontology ontology,
             String repairName, long timeoutSeconds, long seed) throws TimeoutException {
         var executor = Executors.newSingleThreadExecutor(r -> {
@@ -141,13 +172,49 @@ public class RepairComparisonExperiment extends App {
                 future.get(timeoutSeconds, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 future.cancel(true);
-                throw e;
+                throw new TimeoutException("Repair timeout: " + repairName + " exceeded " + timeoutSeconds + " seconds");
             }
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
             throw Utils.panic(e);
+        } catch (ExecutionException e) {
+            // Convert ExecutionException to TimeoutException to be handled uniformly as retry trigger
+            TimeoutException retryTrigger = new TimeoutException(extractErrorMessage(e));
+            retryTrigger.initCause(e);
+            throw retryTrigger;
         } finally {
             executor.shutdownNow();
             awaitRepairTermination(executor, repairName);
+        }
+    }
+
+    private void applyMakeInconsistentWithTimeout(Ontology ontology, long seed) throws TimeoutException {
+        var executor = Executors.newSingleThreadExecutor(r -> {
+            var thread = new Thread(r, "repair-thread-make-inconsistent");
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            var future = executor.submit(() -> {
+                Utils.randomSeed(seed);
+                makeInconsistent(ontology, seed);
+                return null;
+            });
+            try {
+                future.get(MAKE_INCONSISTENT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                future.cancel(true);
+                throw new TimeoutException(
+                        "Make-inconsistent timeout: exceeded " + MAKE_INCONSISTENT_TIMEOUT_SECONDS + " seconds");
+            }
+        } catch (InterruptedException e) {
+            throw Utils.panic(e);
+        } catch (ExecutionException e) {
+            TimeoutException retryTrigger = new TimeoutException(extractErrorMessage(e));
+            retryTrigger.initCause(e);
+            throw retryTrigger;
+        } finally {
+            executor.shutdownNow();
+            awaitRepairTermination(executor, "make-inconsistent");
         }
     }
 
@@ -163,21 +230,50 @@ public class RepairComparisonExperiment extends App {
         }
     }
 
-    private void writeCsvLine(Path file, double v1, double v2) {
+    private void createCsvFileWithHeader(Path file) {
         try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE)) {
-            writer.write(Double.toString(v1));
-            writer.write(",");
-            writer.write(Double.toString(v2));
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            writer.write("iic_power_vs_random,iic_power_vs_not_in_largest_mcs,iic_power_vs_weakening");
             writer.newLine();
         } catch (IOException e) {
             throw Utils.panic(e);
         }
     }
 
+    private void writeCsvLine(Path file, double v1, double v2, double v3) {
+        try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE)) {
+            writer.write(Double.toString(v1));
+            writer.write(",");
+            writer.write(Double.toString(v2));
+            writer.write(",");
+            writer.write(Double.toString(v3));
+            writer.newLine();
+        } catch (IOException e) {
+            throw Utils.panic(e);
+        }
+    }
+
+    private Path createTimestampedCsvPath(String ontologyFileName, String runId) {
+        var base = Path.of("output", "iic-" + ontologyFileName + "-" + runId + ".csv");
+        if (!Files.exists(base)) {
+            return base;
+        }
+        int index = 1;
+        while (true) {
+            var candidate = Path.of("output", "iic-" + ontologyFileName + "-" + runId + "-" + index + ".csv");
+            if (!Files.exists(candidate)) {
+                return candidate;
+            }
+            index++;
+        }
+    }
+
     @Override
     protected void run() {
         var startTime = System.nanoTime();
+        var startDate = new Date();
+        var runId = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(startDate);
         try {
             Files.createDirectories(Path.of("output"));
         } catch (IOException e) {
@@ -189,10 +285,12 @@ public class RepairComparisonExperiment extends App {
         }
 
         for (var input : inputFiles) {
+            var ontologyStartTime = System.nanoTime();
             // Extract ontology filename (without path and extension)
             var ontologyFileName = new File(input).getName();
             ontologyFileName = ontologyFileName.replaceAll("\\.owl$", "");
-            var csvFile = Path.of("output", "iic-" + ontologyFileName + ".csv");
+            var csvFile = createTimestampedCsvPath(ontologyFileName, runId);
+            createCsvFileWithHeader(csvFile);
 
             logMessage("Running experiments for " + input);
             logMessage("CSV output: " + csvFile);
@@ -200,74 +298,187 @@ public class RepairComparisonExperiment extends App {
             try (var ontology = Ontology.loadOntology(input, reasonerFactory)) {
                 logMessage("Loaded...");
 
-                int successfulTrials = 0;
-                int attemptedTrials = 0;
+                int successfulTrials = initialSuccessfulTrials;
+                int attemptedTrials = initialAttemptedTrials;
+                int consecutiveFailures = 0;
+                boolean abortedEarly = false;
+
+                if (successfulTrials > 0 || attemptedTrials > 0) {
+                    logMessage("Resuming from successfulTrials=" + successfulTrials + ", attemptedTrials="
+                            + attemptedTrials + " for " + ontologyFileName);
+                }
 
                 while (successfulTrials < TRIALS) {
-                    int trialIndex = successfulTrials + 1;
-                    logMessage("Trial " + trialIndex + "/" + TRIALS + " (file: " + ontologyFileName + ")");
-                    var trialSeed = BASE_SEED + (attemptedTrials * 3L);
-
                     try (var inconsistent = ontology.cloneWithSeparateCache()) {
+                        int trialIndex = successfulTrials + 1;
+                        logMessage("Trial " + trialIndex + "/" + TRIALS + " (file: " + ontologyFileName + ")");
+                        var trialSeed = BASE_SEED + (attemptedTrials * 5L);
+
                         logMessage("  Making ontology inconsistent...");
-                        makeInconsistent(inconsistent, trialSeed);
+                        try {
+                            applyMakeInconsistentWithTimeout(inconsistent, trialSeed);
+                        } catch (TimeoutException e) {
+                            String msg = e.getMessage();
+                            logMessage("  " + (msg != null ? msg : "Make-inconsistent failed (no error details)"));
+                            consecutiveFailures++;
+                            if (consecutiveFailures >= CONSECUTIVE_FAILURE_CAP) {
+                                throw new IllegalStateException(
+                                        "Make-inconsistent step failed " + consecutiveFailures
+                                                + " times in a row. Aborting trials for this ontology.");
+                            }
+                            // abort this trial and retry with a fresh seed
+                            attemptedTrials++;
+                            continue;
+                        }
+
                         boolean trialSucceeded = false;
 
-                        try (var repairedOntologyWithWeakening = inconsistent.cloneWithSeparateCache()) {
+                        try (var repairedOntologyWithRandomRemoval = inconsistent.cloneWithSeparateCache()) {
                             try {
-                                logMessage("  Repairing with weakening (troquard2018)...");
-                                applyRepairWithTimeout(this::createWeakeningRepair, repairedOntologyWithWeakening,
-                                        "weakening", WEAKENING_TIMEOUT_SECONDS, trialSeed + 1);
+                                logMessage("  Repairing with removal (random)...");
+                                applyRepairWithTimeout(this::createRandomRemovalRepair, repairedOntologyWithRandomRemoval,
+                                        "removal-random", REMOVAL_TIMEOUT_SECONDS, trialSeed + 1);
 
-                                try (var repairedOntologyWithPowerIndex = inconsistent.cloneWithSeparateCache()) {
+                                try (var repairedOntologyWithLargestMcsRemoval = inconsistent.cloneWithSeparateCache()) {
                                     try {
-                                        logMessage("  Repairing with power indexes (troquard2018-shapley-approximate)...");
-                                        applyRepairWithTimeout(this::createPowerIndexRepair,
-                                                repairedOntologyWithPowerIndex, "power-index",
-                                                POWER_INDEX_TIMEOUT_SECONDS, trialSeed + 2);
+                                        logMessage("  Repairing with removal (not-in-largest-mcs)...");
+                                        applyRepairWithTimeout(this::createLargestMcsRemovalRepair,
+                                                repairedOntologyWithLargestMcsRemoval, "removal-not-in-largest-mcs",
+                                                REMOVAL_TIMEOUT_SECONDS, trialSeed + 2);
 
-                                        var subConcepts = collectSubConcepts(repairedOntologyWithWeakening,
-                                                repairedOntologyWithPowerIndex);
-                                        var inferredWeakening = inferredAxioms(repairedOntologyWithWeakening, subConcepts);
-                                        var inferredPowerIndex = inferredAxioms(repairedOntologyWithPowerIndex,
-                                                subConcepts);
+                                        try (var repairedOntologyWithWeakening = inconsistent.cloneWithSeparateCache()) {
+                                            try {
+                                                logMessage("  Repairing with weakening (troquard2018)...");
+                                                applyRepairWithTimeout(this::createWeakeningRepair,
+                                                        repairedOntologyWithWeakening,
+                                                        "weakening", WEAKENING_TIMEOUT_SECONDS, trialSeed + 3);
 
-                                        var iicShapley = Ontology.relativeInformationContent(inferredPowerIndex,
-                                                inferredWeakening);
-                                        var iicWeakening = Ontology.relativeInformationContent(inferredWeakening,
-                                                inferredPowerIndex);
+                                                try (var repairedOntologyWithPowerIndex = inconsistent.cloneWithSeparateCache()) {
+                                                    try {
+                                                        logMessage("  Repairing with power indexes (troquard2018-power-index)...");
+                                                        applyRepairWithTimeout(this::createPowerIndexRepair,
+                                                                repairedOntologyWithPowerIndex, "power-index",
+                                                                POWER_INDEX_TIMEOUT_SECONDS, trialSeed + 4);
 
-                                        writeCsvLine(csvFile, iicShapley, iicWeakening);
+                                                        var subConcepts = collectSubConcepts(repairedOntologyWithRandomRemoval,
+                                                                repairedOntologyWithLargestMcsRemoval,
+                                                                repairedOntologyWithWeakening,
+                                                                repairedOntologyWithPowerIndex);
+                                                        var inferredRandomRemoval = inferredAxioms(repairedOntologyWithRandomRemoval,
+                                                                subConcepts);
+                                                        var inferredLargestMcsRemoval = inferredAxioms(
+                                                                repairedOntologyWithLargestMcsRemoval, subConcepts);
+                                                        var inferredWeakening = inferredAxioms(repairedOntologyWithWeakening,
+                                                                subConcepts);
+                                                        var inferredPowerIndex = inferredAxioms(repairedOntologyWithPowerIndex,
+                                                                subConcepts);
 
-                                        logMessage("  IIC (Shapley wrt Weakening): " + iicShapley);
-                                        logMessage("  IIC (Weakening wrt Shapley): " + iicWeakening);
-                                        trialSucceeded = true;
+                                                        var iicPowerVsRandom = Ontology.relativeInformationContent(
+                                                                inferredPowerIndex,
+                                                                inferredRandomRemoval);
+                                                        var iicPowerVsLargestMcs = Ontology.relativeInformationContent(
+                                                                inferredPowerIndex,
+                                                                inferredLargestMcsRemoval);
+                                                        var iicPowerVsWeakening = Ontology.relativeInformationContent(
+                                                                inferredPowerIndex,
+                                                                inferredWeakening);
+
+                                                        writeCsvLine(csvFile, iicPowerVsRandom, iicPowerVsLargestMcs,
+                                                                iicPowerVsWeakening);
+
+                                                        logMessage("  IIC (Power index wrt Random removal): "
+                                                                + iicPowerVsRandom);
+                                                        logMessage("  IIC (Power index wrt Not-in-largest-MCS removal): "
+                                                                + iicPowerVsLargestMcs);
+                                                        logMessage("  IIC (Power index wrt Weakening): "
+                                                                + iicPowerVsWeakening);
+                                                        trialSucceeded = true;
+
+                                                    } catch (TimeoutException e) {
+                                                        String msg = e.getMessage();
+                                                        logMessage("  " + (msg != null ? msg : "Power index repair failed (no error details)"));
+                                                        consecutiveFailures++;
+                                                        if (consecutiveFailures >= CONSECUTIVE_FAILURE_CAP) {
+                                                            throw new IllegalStateException(
+                                                                    "Power index repair failed " + consecutiveFailures
+                                                                    + " times in a row. Aborting trials for this ontology.");
+                                                        }
+                                                    }
+                                                }
+                                            } catch (TimeoutException e) {
+                                                String msg = e.getMessage();
+                                                logMessage("  " + (msg != null ? msg : "Weakening repair failed (no error details)"));
+                                                consecutiveFailures++;
+                                                if (consecutiveFailures >= CONSECUTIVE_FAILURE_CAP) {
+                                                    throw new IllegalStateException(
+                                                            "Weakening repair failed " + consecutiveFailures
+                                                            + " times in a row. Aborting trials for this ontology.");
+                                                }
+                                            }
+                                        }
 
                                     } catch (TimeoutException e) {
-                                        logMessage("  TIMEOUT: Power index repair exceeded " + POWER_INDEX_TIMEOUT_SECONDS
-                                                + " seconds. Aborting trial and retrying.");
+                                        String msg = e.getMessage();
+                                        logMessage("  " + (msg != null ? msg : "Not-in-largest-MCS removal repair failed (no error details)"));
+                                        consecutiveFailures++;
+                                        if (consecutiveFailures >= CONSECUTIVE_FAILURE_CAP) {
+                                            throw new IllegalStateException(
+                                                    "Not-in-largest-MCS removal repair failed " + consecutiveFailures
+                                                    + " times in a row. Aborting trials for this ontology.");
+                                        }
                                     }
                                 }
                             } catch (TimeoutException e) {
-                                logMessage("  TIMEOUT: Weakening repair exceeded " + WEAKENING_TIMEOUT_SECONDS
-                                        + " seconds. Aborting trial and retrying.");
+                                String msg = e.getMessage();
+                                logMessage("  " + (msg != null ? msg : "Random removal repair failed (no error details)"));
+                                consecutiveFailures++;
+                                if (consecutiveFailures >= CONSECUTIVE_FAILURE_CAP) {
+                                    throw new IllegalStateException(
+                                            "Random removal repair failed " + consecutiveFailures
+                                            + " times in a row. Aborting trials for this ontology.");
+                                }
                             }
                         }
 
                         if (trialSucceeded) {
                             successfulTrials++;
+                            consecutiveFailures = 0;
                         }
+                    } catch (IllegalStateException e) {
+                        logMessage("ERROR: " + e.getMessage());
+                        logMessage("Aborting ontology after successfulTrials=" + successfulTrials
+                                + ", attemptedTrials=" + (attemptedTrials + 1) + ".");
+                        logMessage("Resume this ontology with start-successful-trials=" + successfulTrials
+                                + " and start-attempted-trials=" + (attemptedTrials + 1) + ".");
+                        abortedEarly = true;
+                        break;
                     }
 
                     attemptedTrials++;
                 }
+
+                if (!abortedEarly) {
+                    logMessage("Completed ontology with successfulTrials=" + successfulTrials + ", attemptedTrials="
+                            + attemptedTrials + ".");
+                    logMessage("Resume point for " + ontologyFileName + ": start-successful-trials="
+                            + successfulTrials + ", start-attempted-trials=" + attemptedTrials + ".");
+                }
+
+                logMessage("Finished trials for " + ontologyFileName + " (successfulTrials=" + successfulTrials
+                        + ", attemptedTrials=" + attemptedTrials + ")");
             }
+
+            var ontologyEndTime = System.nanoTime();
+            logMessage("Ontology run time for " + ontologyFileName + ": "
+                    + (ontologyEndTime - ontologyStartTime) / 1_000_000 + " ms; total run time: "
+                    + (ontologyEndTime - startTime) / 1_000_000 + " ms)");
         }
 
 
         var endTime = System.nanoTime();
-        logMessage("Done. (" + (endTime - startTime) / 1_000_000 + " ms; " + Ontology.reasonerCalls
-                + " reasoner calls)");
+        logMessage("All trials done. (run time: " + (endTime - startTime) / 1_000_000
+                + " ms; total run time: " + (endTime - startTime) / 1_000_000 + " ms; "
+                + Ontology.reasonerCalls + " reasoner calls)");
     }
 
     /**

@@ -142,8 +142,10 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
     private void selectPowerIndexBadAxiom(BadAxiomStrategy strategy) {
         switch (strategy) {
             case SHAPLEY_EXACT -> this.powerIndexBadAxiom = new ShapleyInconsistencyValueExact();
-            case SHAPLEY_APPROXIMATE -> this.powerIndexBadAxiom = new ShapleyInconsistencyValueApproximate();
-            case BANZHAF_APPROXIMATE -> this.powerIndexBadAxiom = new BanzhafInconsistencyValueApproximate();
+            case SHAPLEY_APPROXIMATE -> this.powerIndexBadAxiom = new ShapleyInconsistencyValueApproximate(735,
+                    Utils.randomLong());
+            case BANZHAF_APPROXIMATE -> this.powerIndexBadAxiom = new BanzhafInconsistencyValueApproximate(735,
+                    Utils.randomLong());
             default -> throw new IllegalArgumentException("Unsupported bad axiom strategy: " + strategy);
         }
     }
@@ -151,8 +153,10 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
     private void selectPowerIndexWeakerAxiom(WeakerAxiomStrategy strategy) {
         switch (strategy) {
             case SHAPLEY_EXACT -> this.powerIndexWeakerAxiom = new ShapleyInconsistencyValueExact();
-            case SHAPLEY_APPROXIMATE -> this.powerIndexWeakerAxiom = new ShapleyInconsistencyValueApproximate();
-            case BANZHAF_APPROXIMATE -> this.powerIndexWeakerAxiom = new BanzhafInconsistencyValueApproximate();
+            case SHAPLEY_APPROXIMATE -> this.powerIndexWeakerAxiom = new ShapleyInconsistencyValueApproximate(735,
+                    Utils.randomLong());
+            case BANZHAF_APPROXIMATE -> this.powerIndexWeakerAxiom = new BanzhafInconsistencyValueApproximate(735,
+                    Utils.randomLong());
             default -> throw new IllegalArgumentException("Unsupported weaker axiom strategy: " + strategy);
         }
     }
@@ -285,4 +289,3 @@ public class OntologyRepairWithPowerIndexes extends OntologyRepairWeakening {
                 .getKey();
     }
 }
-
